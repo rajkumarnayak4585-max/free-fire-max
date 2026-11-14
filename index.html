@@ -1,0 +1,415 @@
+
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RAJ BATTLE ARENA - Real Image Game</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#07101c;color:white;font-family:Arial}
+header{
+ background:#101b30;padding:13px 16px;
+ display:flex;justify-content:space-between;align-items:center
+}
+header h2{margin:0;color:#b88aff;font-size:21px}
+header small{color:#c3cde0}
+button{
+ border:0;border-radius:8px;padding:12px 17px;
+ background:#a45cff;color:white;font-weight:bold
+}
+#lobby{text-align:center;padding:18px}
+.hero{
+ min-height:300px;border-radius:15px;
+ background:linear-gradient(#0005,#0009),
+ url("https://images.unsplash.com/photo-1448375240586-882707db888b?w=1400") center/cover;
+ display:flex;flex-direction:column;justify-content:center;align-items:center
+}
+.hero h1{font-size:36px;text-shadow:0 3px 8px black}
+#gameScreen{display:none;position:relative}
+canvas{display:block;width:100%;height:calc(100vh - 58px);touch-action:none}
+.hud{
+ position:absolute;top:10px;left:10px;
+ pointer-events:none;text-shadow:0 2px 5px black
+}
+.hud div{background:#07101dcc;padding:8px;margin:5px;border-radius:6px}
+.controls{
+ position:absolute;bottom:15px;left:0;right:0;
+ display:flex;justify-content:space-between;padding:0 15px;
+ pointer-events:none
+}
+.pad{
+ display:grid;grid-template-columns:52px 52px 52px;
+ gap:4px;pointer-events:auto
+}
+.pad button{padding:13px 4px;background:#283c60dd}
+.up{grid-column:2}.left{grid-column:1;grid-row:2}
+.down{grid-column:2;grid-row:2}.right{grid-column:3;grid-row:2}
+#collect{pointer-events:auto;border-radius:50%;width:75px;height:75px}
+#mission{
+ position:absolute;top:12px;right:12px;
+ background:#07101dcc;padding:10px;border-radius:8px;
+ font-size:12px
+}
+</style>
+</head>
+<body>
+
+<header>
+ <h2>⚡ RAJ BATTLE ARENA</h2>
+ <small>RAJ KUMAR NAYAK</small>
+</header>
+
+<div id="lobby">
+ <div class="hero">
+  <h1>STORM ARENA</h1>
+  <p>REAL IMAGE SURVIVAL GAME</p>
+  <button onclick="startGame()">▶ START GAME</button>
+ </div>
+ <h3>GAME FEATURES</h3>
+ <p>🌲 Real Forest Images | 🏢 Buildings | 👤 Photo Characters</p>
+ <p>🤖 3 Bots | 💎 Crystal Mission | 📱 Mobile Controls</p>
+</div>
+
+<div id="gameScreen">
+ <canvas id="game"></canvas>
+ <div class="hud">
+  <div>PLAYER: RAJ</div>
+  <div>❤️ HEALTH: <span id="health">100</span></div>
+  <div>💎 ENERGY: <span id="energy">0</span></div>
+  <div>🤖 BOTS: <span id="bots">3</span></div>
+ </div>
+ <div id="mission">MISSION: COLLECT 10 CRYSTALS</div>
+ <div class="controls">
+  <div class="pad">
+   <button class="up" data-key="up">⬆</button>
+   <button class="left" data-key="left">⬅</button>
+   <button class="down" data-key="down">⬇</button>
+   <button class="right" data-key="right">➡</button>
+  </div>
+  <button id="collect" onclick="collectEnergy()">💎</button>
+ </div>
+</div>
+
+<script type="module">
+import * as THREE from
+'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+const canvas=document.getElementById("game");
+let scene,camera,renderer,player;
+let bots=[],crystals=[],keys={};
+let energy=0,health=100,started=false;
+let clock=new THREE.Clock();
+
+const loader=new THREE.TextureLoader();
+loader.setCrossOrigin("anonymous");
+
+const images={
+ forest:"https://images.unsplash.com/photo-1448375240586-882707db888b?w=1200",
+ ground:"https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=1200",
+ player:"https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400",
+ bot1:"https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400",
+ bot2:"https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400",
+ bot3:"https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400"
+};
+
+function material(color){
+ return new THREE.MeshStandardMaterial({color,roughness:.9});
+}
+
+function createTree(x,z){
+ let trunk=new THREE.Mesh(
+  new THREE.CylinderGeometry(.25,.4,2,8),
+  material(0x68452d)
+ );
+ trunk.position.set(x,1,z);
+ scene.add(trunk);
+
+ let leaves=new THREE.Mesh(
+  new THREE.ConeGeometry(2,5,8),
+  material(0x15532c)
+ );
+ leaves.position.set(x,4,z);
+ scene.add(leaves);
+}
+
+function createBuilding(x,z){
+ const b=new THREE.Mesh(
+  new THREE.BoxGeometry(8,5,8),
+  material(0xaaa293)
+ );
+ b.position.set(x,2.5,z);
+ scene.add(b);
+
+ const roof=new THREE.Mesh(
+  new THREE.BoxGeometry(8.5,.5,8.5),
+  material(0x343044)
+ );
+ roof.position.set(x,5.2,z);
+ scene.add(roof);
+}
+
+function makePhotoCharacter(url,color){
+ const group=new THREE.Group();
+
+ // Body
+ const body=new THREE.Mesh(
+  new THREE.CapsuleGeometry(.55,.85,4,8),
+  material(color)
+ );
+ body.position.y=.9;
+ group.add(body);
+
+ // Real photo face texture
+ loader.load(url,texture=>{
+  const photo=new THREE.Mesh(
+   new THREE.PlaneGeometry(1.25,1.65),
+   new THREE.MeshBasicMaterial({
+    map:texture,side:THREE.DoubleSide
+   })
+  );
+  photo.position.set(0,2.1,.04);
+  group.add(photo);
+ });
+
+ // Backpack
+ const bag=new THREE.Mesh(
+  new THREE.BoxGeometry(.75,.9,.4),
+  material(0x252b3a)
+ );
+ bag.position.set(0,1,-.55);
+ group.add(bag);
+
+ return group;
+}
+
+function createGame(){
+ scene=new THREE.Scene();
+ scene.background=new THREE.Color(0x8ba9b5);
+ scene.fog=new THREE.Fog(0x8ba9b5,45,150);
+
+ camera=new THREE.PerspectiveCamera(65,1,.1,300);
+
+ renderer=new THREE.WebGLRenderer({
+  canvas,antialias:true
+ });
+ renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+ renderer.shadowMap.enabled=true;
+
+ scene.add(new THREE.HemisphereLight(0xffffff,0x354c32,2));
+
+ const sun=new THREE.DirectionalLight(0xffffff,2.2);
+ sun.position.set(30,60,30);
+ sun.castShadow=true;
+ scene.add(sun);
+
+ // Ground with real image texture
+ loader.load(images.ground,texture=>{
+  texture.wrapS=THREE.RepeatWrapping;
+  texture.wrapT=THREE.RepeatWrapping;
+  texture.repeat.set(8,8);
+  const ground=new THREE.Mesh(
+   new THREE.PlaneGeometry(180,180),
+   new THREE.MeshStandardMaterial({map:texture})
+  );
+  ground.rotation.x=-Math.PI/2;
+  ground.receiveShadow=true;
+  scene.add(ground);
+ });
+
+ // Forest photo backdrop
+ loader.load(images.forest,texture=>{
+  const background=new THREE.Mesh(
+   new THREE.PlaneGeometry(180,100),
+   new THREE.MeshBasicMaterial({
+    map:texture,side:THREE.DoubleSide
+   })
+  );
+  background.position.set(0,35,-85);
+  scene.add(background);
+ });
+
+ // Road
+ const road=new THREE.Mesh(
+  new THREE.PlaneGeometry(13,180),
+  material(0x92836b)
+ );
+ road.rotation.x=-Math.PI/2;
+ road.position.y=.04;
+ scene.add(road);
+
+ const road2=road.clone();
+ road2.rotation.z=Math.PI/2;
+ scene.add(road2);
+
+ // Forest trees
+ for(let i=0;i<100;i++){
+  const x=(Math.random()-.5)*150;
+  const z=(Math.random()-.5)*150;
+  if(Math.abs(x)<13||Math.abs(z)<13)continue;
+  createTree(x,z);
+ }
+
+ // Buildings
+ createBuilding(-25,-20);
+ createBuilding(25,-25);
+ createBuilding(-30,25);
+ createBuilding(30,30);
+
+ // Main character
+ player=makePhotoCharacter(images.player,0x8b55dc);
+ player.position.set(0,0,0);
+ scene.add(player);
+
+ // 3 bots with photo faces
+ const botData=[
+  [images.bot1,0x2588cf],
+  [images.bot2,0xc94e66],
+  [images.bot3,0xd6a13d]
+ ];
+
+ botData.forEach((data,i)=>{
+  const bot=makePhotoCharacter(data[0],data[1]);
+  bot.position.set(
+   (Math.random()-.5)*60,0,
+   (Math.random()-.5)*60
+  );
+  bot.userData.speed=.025+Math.random()*.015;
+  bots.push(bot);
+  scene.add(bot);
+ });
+
+ // Crystals
+ for(let i=0;i<30;i++){
+  const crystal=new THREE.Mesh(
+   new THREE.OctahedronGeometry(.8),
+   new THREE.MeshStandardMaterial({
+    color:0x50eaff,
+    emissive:0x0088ff,
+    emissiveIntensity:1.7
+   })
+  );
+  crystal.position.set(
+   (Math.random()-.5)*110,1.2,
+   (Math.random()-.5)*110
+  );
+  crystal.userData.taken=false;
+  crystals.push(crystal);
+  scene.add(crystal);
+ }
+
+ resize();
+ window.addEventListener("resize",resize);
+}
+
+function resize(){
+ if(!renderer)return;
+ const w=canvas.clientWidth;
+ const h=canvas.clientHeight;
+ renderer.setSize(w,h,false);
+ camera.aspect=w/h;
+ camera.updateProjectionMatrix();
+}
+
+function startGame(){
+ document.getElementById("lobby").style.display="none";
+ document.getElementById("gameScreen").style.display="block";
+ createGame();
+ started=true;
+ animate();
+}
+window.startGame=startGame;
+
+function movePlayer(){
+ let dx=0,dz=0;
+ if(keys.up||keys.w)dz--;
+ if(keys.down||keys.s)dz++;
+ if(keys.left||keys.a)dx--;
+ if(keys.right||keys.d)dx++;
+
+ const length=Math.hypot(dx,dz);
+ if(length){
+  dx/=length;dz/=length;
+  player.position.x+=dx*.22;
+  player.position.z+=dz*.22;
+  player.rotation.y=Math.atan2(dx,dz);
+ }
+
+ player.position.x=THREE.MathUtils.clamp(player.position.x,-75,75);
+ player.position.z=THREE.MathUtils.clamp(player.position.z,-75,75);
+}
+
+function moveBots(){
+ bots.forEach((bot,i)=>{
+  const target=new THREE.Vector3(
+   player.position.x,0,player.position.z
+  );
+  const dir=target.sub(bot.position);
+
+  if(dir.length()>7){
+   dir.normalize();
+   bot.position.addScaledVector(dir,-bot.userData.speed);
+  }else{
+   bot.position.x+=Math.sin(Date.now()*.001+i)*.04;
+   bot.position.z+=Math.cos(Date.now()*.001+i)*.04;
+  }
+ });
+}
+
+function collectEnergy(){
+ if(!player)return;
+ crystals.forEach(c=>{
+  if(!c.userData.taken&&c.position.distanceTo(player.position)<4){
+   c.userData.taken=true;
+   c.visible=false;
+   energy++;
+  }
+ });
+ document.getElementById("energy").textContent=energy;
+ document.getElementById("mission").textContent=
+  energy>=10?"🏆 MISSION COMPLETE!":"MISSION: COLLECT "+(10-energy)+" MORE";
+}
+window.collectEnergy=collectEnergy;
+
+function animate(){
+ if(!started)return;
+ requestAnimationFrame(animate);
+
+ movePlayer();
+ moveBots();
+
+ crystals.forEach(c=>{
+  if(!c.userData.taken)c.rotation.y+=.025;
+ });
+
+ camera.position.lerp(
+  new THREE.Vector3(
+   player.position.x,10,player.position.z+15
+  ),.09
+ );
+ camera.lookAt(player.position.x,1,player.position.z);
+
+ document.getElementById("bots").textContent=bots.length;
+ renderer.render(scene,camera);
+}
+
+window.addEventListener("keydown",e=>{
+ keys[e.key.toLowerCase()]=true;
+});
+window.addEventListener("keyup",e=>{
+ keys[e.key.toLowerCase()]=false;
+});
+document.querySelectorAll("[data-key]").forEach(button=>{
+ const key=button.dataset.key;
+ button.addEventListener("pointerdown",e=>{
+  e.preventDefault();
+  keys[key]=true;
+ });
+ ["pointerup","pointerleave","pointercancel"].forEach(event=>{
+  button.addEventListener(event,()=>keys[key]=false);
+ });
+});
+window.addEventListener("blur",()=>keys={});
+</script>
+</body>
+</html>
